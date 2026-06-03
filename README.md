@@ -47,14 +47,14 @@ Use them together: plan *daquele jeito*, then put the *doors to automatic*.
 
 ## The harness layer (hooks)
 
-The hooks ship in [`hooks/`](hooks/) and are registered in `~/.claude/settings.json`:
+Three guardrail hooks are **bundled in `SKILL.md`'s frontmatter**, so they load automatically when the skill is engaged and are scoped to it — no global hook config. Only the always-on status line lives in `~/.claude/settings.json` (added by `install.sh`). Scripts live in [`hooks/`](hooks/):
 
 | Hook | Event | What it does |
 |---|---|---|
 | `block-broad-scan.py` | `PreToolUse` (Bash) | Hard-blocks `find /`, `find ~`, broad recursive greps, `rm -r` on top-level roots, fork bombs, pipe-to-shell. Runs **before** the permission mode, so it holds even under `acceptEdits`/bypass. Fails **open**. |
-| `error-circuit-breaker.sh` | `PostToolUse` (Bash) | Counts consecutive tool failures per session; trips after `PORTAS_ERROR_THRESHOLD` (default 4). Best-effort. |
+| `error-circuit-breaker.sh` | `PostToolUse` + `PostToolUseFailure` (Bash) | Uses the dedicated failure event to count consecutive failures per session; trips after `PORTAS_ERROR_THRESHOLD` (default 4). `PORTAS_DEBUG=1` logs raw payloads to confirm the schema on your version. |
 | `precompact-checkpoint.sh` | `PreCompact` | Snapshots the transcript right before automatic compaction (does **not** block it). |
-| `statusline-context.sh` | `statusLine` | Surfaces the live context % (⚠️ at ≥80%) — the real gauge for context discipline. |
+| `statusline-context.sh` | `statusLine` (settings.json) | Surfaces the live context % (⚠️ at ≥80%) — the real gauge for context discipline. Added by `install.sh`. |
 
 The block list is **defense-in-depth against common, high-cost mistakes**, not a security boundary against a determined adversary. The hard safety boundary is still a sandbox. The block logic is covered by [`tests/test_block_broad_scan.py`](tests/test_block_broad_scan.py) (36 cases: dangerous patterns blocked, look-alikes like `git commit -m "fix rm -rf / bug"` allowed).
 
@@ -68,31 +68,13 @@ git clone https://github.com/beralzir/portas-em-automatico.git ~/.claude/skills/
 
 Update later with `cd ~/.claude/skills/portas-em-automatico && git pull`.
 
-### 2. Register the hooks in `~/.claude/settings.json`
+### 2. Run the installer
 
-The skill is just instructions until the hooks are wired up. **Merge** this into your existing `~/.claude/settings.json` (don't blindly overwrite — keep your other keys):
-
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "bash ~/.claude/skills/portas-em-automatico/hooks/statusline-context.sh"
-  },
-  "hooks": {
-    "PreToolUse": [
-      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "python3 ~/.claude/skills/portas-em-automatico/hooks/block-broad-scan.py" } ] }
-    ],
-    "PostToolUse": [
-      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "bash ~/.claude/skills/portas-em-automatico/hooks/error-circuit-breaker.sh" } ] }
-    ],
-    "PreCompact": [
-      { "hooks": [ { "type": "command", "command": "bash ~/.claude/skills/portas-em-automatico/hooks/precompact-checkpoint.sh" } ] }
-    ]
-  }
-}
+```bash
+~/.claude/skills/portas-em-automatico/install.sh
 ```
 
-> Some Claude Code versions do not expand `~` inside hook commands — if a hook doesn't fire, replace `~` with your absolute home path. Requires `python3` and `jq` on `PATH`.
+The **guardrail hooks load automatically** from the skill's frontmatter when you engage the skill — no global hook config needed. `install.sh` only adds the always-on context-% status line to `~/.claude/settings.json` (idempotent, backs it up first, never clobbers an existing `statusLine`). Requires `python3` and `jq` on `PATH`.
 
 ### 3. Verify
 
@@ -117,7 +99,7 @@ It announces itself on first activation with *"Doors to automatic and cross-chec
 rm -rf ~/.claude/skills/portas-em-automatico
 ```
 
-Then remove the `statusLine` and the `portas-em-automatico` hook entries from `~/.claude/settings.json`.
+Then remove the `statusLine` entry from `~/.claude/settings.json` (or restore the `~/.claude/settings.json.bak-portas` backup that `install.sh` wrote). The guardrail hooks need no cleanup — they lived in the skill folder you just deleted.
 
 ## Author & License
 

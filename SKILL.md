@@ -6,6 +6,26 @@ description: |
   TRIGGER when: (1) the user invokes `/portas-em-automatico`; OR (2) after a plan is approved, the user attaches a release phrase as a final/standalone instruction. Release phrases (case-insensitive): Portuguese "portas em automático" / "põe as portas em automático" / "pode soltar em automático"; English "doors to automatic" / "doors at automatic" / "doors to automatic and cross-check". The bare word "cross-check" triggers ONLY when used as a command to engage the mode (e.g. "cross-check and go"), not when it is part of a data task.
 
   DO NOT TRIGGER when: the phrase is negated ("não põe em automático"), past tense, a meta-question ("o que é doors to automatic?"), or when "cross-check" means a literal data-reconciliation task ("faça o cross-check dessas duas planilhas"). When in doubt, prefer the slash command.
+hooks:
+  PreToolUse:
+    - matcher: Bash
+      hooks:
+        - type: command
+          command: "./hooks/block-broad-scan.py"
+  PostToolUse:
+    - matcher: Bash
+      hooks:
+        - type: command
+          command: "./hooks/error-circuit-breaker.sh"
+  PostToolUseFailure:
+    - matcher: Bash
+      hooks:
+        - type: command
+          command: "./hooks/error-circuit-breaker.sh"
+  PreCompact:
+    - hooks:
+        - type: command
+          command: "./hooks/precompact-checkpoint.sh"
 ---
 
 # Portas em automático — supervised autonomous execution
@@ -58,10 +78,10 @@ You do **not** have a trustworthy gauge of how full the context window is, and t
 
 ## Instruction vs enforcement (read this)
 
-Everything above is **instruction** — you will try to honor it, but instruction is not a hard guarantee, especially under a full context or mid-loop. The **enforcement** layer is the hooks shipped alongside this skill in `hooks/` (registered in `~/.claude/settings.json`):
+Everything above is **instruction** — you will try to honor it, but instruction is not a hard guarantee, especially under a full context or mid-loop. The **enforcement** layer is the hooks **bundled in this skill's frontmatter** — they activate automatically when this skill is engaged and are scoped to it (backed by the scripts in `hooks/`). Only the status line lives in `~/.claude/settings.json`:
 
 - `block-broad-scan.py` (PreToolUse / Bash) — hard-blocks `find /`, `find ~`, broad recursive greps, and `rm -rf` on dangerous targets. Runs *before* the permission mode, so it holds even under acceptEdits / bypass. This is what actually enforces cross-check #3 (and the destructive half of #2).
-- `error-circuit-breaker.sh` (PostToolUse / Bash) — counts consecutive failures per session and trips after a threshold. Best-effort backstop for cross-check #4.
+- `error-circuit-breaker.sh` (PostToolUse + **PostToolUseFailure** / Bash) — uses the dedicated failure event to count consecutive failures per session and trips after a threshold (default 4). Backstop for cross-check #4.
 - `precompact-checkpoint.sh` (PreCompact) — snapshots the transcript right before automatic compaction. Backstop for context discipline.
 - `statusline-context.sh` — surfaces the live context % to the human (the real gauge for #context discipline).
 
