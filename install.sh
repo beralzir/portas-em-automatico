@@ -2,20 +2,20 @@
 # install.sh — finishes setting up portas-em-automatico after a clone into
 # ~/.claude/skills/portas-em-automatico/.
 #
-# The guardrail hooks (scan blocker, error circuit breaker, precompact checkpoint) are
-# bundled in SKILL.md frontmatter and load automatically when the skill is engaged, so
-# they need NO settings.json changes. This script only:
-#   1. makes the hook scripts executable (frontmatter hooks run them by relative path),
-#   2. adds the always-on context-% status line to ~/.claude/settings.json (idempotent,
-#      never clobbers an existing statusLine),
-#   3. runs the self-test.
+# Two enforcement scopes:
+#   - ALWAYS-ON (global, in ~/.claude/settings.json): the scan/destruction blocker
+#     (PreToolUse) and the context-% status line. Added here, idempotently.
+#   - SKILL-SCOPED (in SKILL.md frontmatter): the error circuit breaker and the
+#     precompact checkpoint — they load automatically when the skill is engaged and
+#     need NO settings.json changes.
 #
-# Safe to re-run. Backs up settings.json before touching it.
+# Safe to re-run. Backs up settings.json before touching it; never clobbers existing keys.
 set -euo pipefail
 
 SKILL_DIR="$(cd "$(dirname "$0")" && pwd)"
 SETTINGS="${HOME}/.claude/settings.json"
 SL_CMD="bash ${SKILL_DIR}/hooks/statusline-context.sh"
+BLOCK_CMD="python3 ${SKILL_DIR}/hooks/block-broad-scan.py"
 
 command -v jq >/dev/null 2>&1 || { echo "ERROR: jq is required (brew install jq)."; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo "ERROR: python3 is required."; exit 1; }
@@ -23,19 +23,30 @@ command -v python3 >/dev/null 2>&1 || { echo "ERROR: python3 is required."; exit
 echo "1/3  Making hook scripts executable..."
 chmod +x "${SKILL_DIR}/hooks/"*.sh "${SKILL_DIR}/hooks/"*.py 2>/dev/null || true
 
-echo "2/3  Wiring the context-% status line into settings.json..."
+echo "2/3  Wiring always-on pieces into settings.json (scan blocker + status line)..."
 mkdir -p "${HOME}/.claude"
 [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
 cp "$SETTINGS" "${SETTINGS}.bak-portas"
 echo "     backup -> ${SETTINGS}.bak-portas"
+
+# Status line (no-clobber).
 if jq -e '.statusLine' "$SETTINGS" >/dev/null 2>&1; then
-  echo "     a statusLine already exists — leaving it untouched."
-  echo "     (to use ours, set statusLine.command to: ${SL_CMD})"
+  echo "     a statusLine already exists — leaving it untouched (ours: ${SL_CMD})."
 else
   tmp="$(mktemp)"
   jq --arg cmd "$SL_CMD" '.statusLine = {type:"command", command:$cmd}' "$SETTINGS" > "$tmp"
   mv "$tmp" "$SETTINGS"
   echo "     added context-% status line."
+fi
+
+# Global scan/destruction blocker (idempotent — appends, never clobbers other hooks).
+if jq -e --arg c "$BLOCK_CMD" '[(.hooks.PreToolUse // [])[].hooks[]?.command] | index($c)' "$SETTINGS" >/dev/null 2>&1; then
+  echo "     scan blocker already registered globally."
+else
+  tmp="$(mktemp)"
+  jq --arg c "$BLOCK_CMD" '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + [{matcher:"Bash", hooks:[{type:"command", command:$c}]}])' "$SETTINGS" > "$tmp"
+  mv "$tmp" "$SETTINGS"
+  echo "     registered scan blocker globally (PreToolUse/Bash)."
 fi
 
 echo "3/3  Self-test..."
@@ -47,6 +58,7 @@ else
 fi
 
 echo
-echo "Done. The guardrail hooks load automatically when you invoke /portas-em-automatico"
-echo "(or a release phrase like \"doors to automatic and cross-check\"). Restart your"
-echo "Claude Code session so settings.json (status line) takes effect."
+echo "Done."
+echo "  - Global (settings.json): scan blocker + context-% status line."
+echo "  - Skill-scoped (frontmatter): circuit breaker + precompact — load on /portas-em-automatico."
+echo "Restart your Claude Code session so settings.json takes effect."

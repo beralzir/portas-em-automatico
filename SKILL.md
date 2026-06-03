@@ -7,11 +7,6 @@ description: |
 
   DO NOT TRIGGER when: the phrase is negated ("não põe em automático"), past tense, a meta-question ("o que é doors to automatic?"), or when "cross-check" means a literal data-reconciliation task ("faça o cross-check dessas duas planilhas"). When in doubt, prefer the slash command.
 hooks:
-  PreToolUse:
-    - matcher: Bash
-      hooks:
-        - type: command
-          command: "./hooks/block-broad-scan.py"
   PostToolUse:
     - matcher: Bash
       hooks:
@@ -78,9 +73,9 @@ You do **not** have a trustworthy gauge of how full the context window is, and t
 
 ## Instruction vs enforcement (read this)
 
-Everything above is **instruction** — you will try to honor it, but instruction is not a hard guarantee, especially under a full context or mid-loop. The **enforcement** layer is the hooks **bundled in this skill's frontmatter** — they activate automatically when this skill is engaged and are scoped to it (backed by the scripts in `hooks/`). Only the status line lives in `~/.claude/settings.json`:
+Everything above is **instruction** — you will try to honor it, but instruction is not a hard guarantee, especially under a full context or mid-loop. The **enforcement** layer splits in two: the scan/destruction blocker runs **globally** (always on, in `~/.claude/settings.json` — added by `install.sh`), and the mode-behavior hooks are **bundled in this skill's frontmatter** (active only while the skill is engaged). Both are backed by the scripts in `hooks/`:
 
-- `block-broad-scan.py` (PreToolUse / Bash) — hard-blocks `find /`, `find ~`, broad recursive greps, and `rm -rf` on dangerous targets. Runs *before* the permission mode, so it holds even under acceptEdits / bypass. This is what actually enforces cross-check #3 (and the destructive half of #2).
+- `block-broad-scan.py` (PreToolUse / Bash, **global / always-on**) — hard-blocks `find /`, `find ~`, broad recursive greps, and `rm -rf` on dangerous targets. Runs *before* the permission mode, so it holds even under acceptEdits / bypass. Enforces cross-check #3 (and the destructive half of #2).
 - `error-circuit-breaker.sh` (PostToolUse + **PostToolUseFailure** / Bash) — uses the dedicated failure event to count consecutive failures per session and trips after a threshold (default 4). Backstop for cross-check #4.
 - `precompact-checkpoint.sh` (PreCompact) — snapshots the transcript right before automatic compaction. Backstop for context discipline.
 - `statusline-context.sh` — surfaces the live context % to the human (the real gauge for #context discipline).

@@ -47,14 +47,14 @@ Use them together: plan *daquele jeito*, then put the *doors to automatic*.
 
 ## The harness layer (hooks)
 
-Three guardrail hooks are **bundled in `SKILL.md`'s frontmatter**, so they load automatically when the skill is engaged and are scoped to it — no global hook config. Only the always-on status line lives in `~/.claude/settings.json` (added by `install.sh`). Scripts live in [`hooks/`](hooks/):
+The enforcement layer splits in two. The **scan/destruction blocker runs globally** (always on, in `~/.claude/settings.json`); the **mode-behavior hooks** (circuit breaker, precompact) are **bundled in `SKILL.md`'s frontmatter** (active only while the skill is engaged). `install.sh` wires the global pieces (blocker + status line). Scripts live in [`hooks/`](hooks/):
 
 | Hook | Event | What it does |
 |---|---|---|
-| `block-broad-scan.py` | `PreToolUse` (Bash) | Hard-blocks `find /`, `find ~`, broad recursive greps, `rm -r` on top-level roots, fork bombs, pipe-to-shell. Runs **before** the permission mode, so it holds even under `acceptEdits`/bypass. Fails **open**. |
-| `error-circuit-breaker.sh` | `PostToolUse` + `PostToolUseFailure` (Bash) | Uses the dedicated failure event to count consecutive failures per session; trips after `PORTAS_ERROR_THRESHOLD` (default 4). `PORTAS_DEBUG=1` logs raw payloads to confirm the schema on your version. |
-| `precompact-checkpoint.sh` | `PreCompact` | Snapshots the transcript right before automatic compaction (does **not** block it). |
-| `statusline-context.sh` | `statusLine` (settings.json) | Surfaces the live context % (⚠️ at ≥80%) — the real gauge for context discipline. Added by `install.sh`. |
+| `block-broad-scan.py` | `PreToolUse` (Bash) · **global** | Hard-blocks `find /`, `find ~`, broad recursive greps, `rm -r` on top-level roots, fork bombs, pipe-to-shell. Runs **before** the permission mode, so it holds even under `acceptEdits`/bypass. Fails **open**. |
+| `error-circuit-breaker.sh` | `PostToolUse` + `PostToolUseFailure` (Bash) · **skill** | Uses the dedicated failure event to count consecutive failures per session; trips after `PORTAS_ERROR_THRESHOLD` (default 4). `PORTAS_DEBUG=1` logs raw payloads to confirm the schema on your version. |
+| `precompact-checkpoint.sh` | `PreCompact` · **skill** | Snapshots the transcript right before automatic compaction (does **not** block it). |
+| `statusline-context.sh` | `statusLine` (settings.json) · **global** | Surfaces the live context % (⚠️ at ≥80%) — the real gauge for context discipline. Added by `install.sh`. |
 
 The block list is **defense-in-depth against common, high-cost mistakes**, not a security boundary against a determined adversary. The hard safety boundary is still a sandbox. The block logic is covered by [`tests/test_block_broad_scan.py`](tests/test_block_broad_scan.py) (36 cases: dangerous patterns blocked, look-alikes like `git commit -m "fix rm -rf / bug"` allowed).
 
@@ -74,7 +74,7 @@ Update later with `cd ~/.claude/skills/portas-em-automatico && git pull`.
 ~/.claude/skills/portas-em-automatico/install.sh
 ```
 
-The **guardrail hooks load automatically** from the skill's frontmatter when you engage the skill — no global hook config needed. `install.sh` only adds the always-on context-% status line to `~/.claude/settings.json` (idempotent, backs it up first, never clobbers an existing `statusLine`). Requires `python3` and `jq` on `PATH`.
+`install.sh` wires the always-on pieces into `~/.claude/settings.json` — the **scan/destruction blocker** (PreToolUse) and the **context-% status line** — idempotently (backs up first, never clobbers). The **mode-behavior hooks** (circuit breaker, precompact) load automatically from the skill's frontmatter when you engage the skill. Requires `python3` and `jq` on `PATH`.
 
 ### 3. Verify
 
