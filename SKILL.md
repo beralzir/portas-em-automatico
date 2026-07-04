@@ -55,13 +55,15 @@ You are past approval. Do **not** re-ask permission for steps already in the app
 
 ## Cross-checks — PAUSE and bring the human back in
 
-Stop and use `AskUserQuestion` (or report and wait for a reply) when ANY of these is true. They are written as **countable conditions** on purpose: vague self-states ("if you feel unsure") decay and you may not detect them; checkable conditions survive a long, full session.
+Stop and bring the human back in when ANY of these is true. **Default to `AskUserQuestion` (click-question) for any pause reducible to ≤4 discrete options** (proceed / amend / abort, staging / prod, and so on) — the same rule as daquele-jeito §1.1, and it holds even when this skill runs standalone. Fall back to a plain report-and-wait only for a genuinely open-ended pause (e.g. #4, where you report an error and your hypothesis). They are written as **countable conditions** on purpose: vague self-states ("if you feel unsure") decay and you may not detect them; checkable conditions survive a long, full session.
 
 1. **Plan drift.** An approved step turns out wrong, a dependency does not exist, or scope grows beyond the plan. Do not force the original plan — state the divergence, propose an amendment, validate it, then continue.
 2. **Destructive / irreversible — cross-check before acting.** Before ANY command that deletes, overwrites, or moves files *outside the project directory*, and before any outward or irreversible action (deploy, DB migration, network mutation, sending anything external, force-push, publishing). State exactly what will change, then confirm.
 3. **Path not found → do NOT widen the scope.** If an expected file or directory is missing, NEVER escalate the search to the whole machine — no `find /`, no `find ~`, no climbing to `/` or the home root. Stop, report "expected X here, found Y instead", and ask. *This is the canonical failure this mode exists to prevent.*
 4. **Repeated error.** If the same class of error recurs **3×** on the same sub-task, STOP. Do not keep trying variants — that is a doom loop and it burns context fast. Report the error, your current hypothesis, and what you would need to resolve it.
 5. **Genuine fork.** When 2+ reasonable approaches exist AND picking wrong costs rework, stop and ask. State your confidence explicitly; do NOT fabricate an interpretation just to keep moving.
+
+Also pause if a **kludge/shortcut appears mid-execution** that would add silent technical debt: surface the clean-vs-hack tradeoff and let the human choose (redo clean now, or accept it with an explicit `TODO`), instead of burying it in a diff (cf. daquele-jeito §5).
 
 ## Context discipline (be honest: you cannot reliably measure context)
 
@@ -77,7 +79,7 @@ You do **not** have a trustworthy gauge of how full the context window is, and t
 Everything above is **instruction** — you will try to honor it, but instruction is not a hard guarantee, especially under a full context or mid-loop. The **enforcement** layer splits in two: the scan/destruction blocker runs **globally** (always on, in `~/.claude/settings.json` — added by `install.sh`), and the mode-behavior hooks are **bundled in this skill's frontmatter** (active only while the skill is engaged). Both are backed by the scripts in `hooks/`:
 
 - `block-broad-scan.py` (PreToolUse / Bash, **global / always-on**) — hard-blocks `find /`, `find ~`, broad recursive greps, and `rm -rf` on dangerous targets. Runs *before* the permission mode, so it holds even under acceptEdits / bypass. Enforces cross-check #3 (and the destructive half of #2).
-- `error-circuit-breaker.sh` (PostToolUse + **PostToolUseFailure** / Bash) — uses the dedicated failure event to count consecutive failures per session and trips after a threshold (default 4). Backstop for cross-check #4.
+- `error-circuit-breaker.sh` (PostToolUse + **PostToolUseFailure** / Bash) — uses the dedicated failure event to count consecutive failures per session and trips after a threshold (default 4). Backstop for cross-check #4 — the instruction tells you to stop at 3×, so this hook (one higher) fires only if you blew past that self-check.
 - `precompact-checkpoint.sh` (PreCompact) — snapshots the transcript right before automatic compaction. Backstop for context discipline.
 - `statusline-context.sh` — surfaces the live context % to the human (the real gauge for #context discipline).
 
@@ -85,4 +87,4 @@ If the hooks are not installed, treat the cross-checks as best-effort only, and 
 
 ## Self-audit before "done"
 
-Before declaring any step complete, run the four axes from daquele-jeito (functional / regression / hygiene / specification). "Done" is an auditable declaration, not a feeling.
+Before declaring any step complete, run the four axes (functional / regression / hygiene / specification) with the mindset of someone **looking for problems, not seeking confirmation**. Each axis gets an explicit **passed / N-A (with reason) / failed (with a plan)**, backed by concrete evidence (the test you ran, the command, the input/output shown). **If any axis failed or went unchecked, do NOT mark the step done** — report the real status instead. "Done" is an auditable declaration, not a feeling. (Full audit-block format: daquele-jeito §3.)
