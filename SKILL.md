@@ -68,6 +68,7 @@ Stop and use `AskUserQuestion` (or report and wait for a reply) when ANY of thes
 You do **not** have a trustworthy gauge of how full the context window is, and these very instructions may be among the first things dropped when it compacts. So do not rely on "I'll notice it filling up":
 
 - Every ~5 completed steps, or before a large sub-task, (re)write a checkpoint file **`SESSION.md`** in the project: current goal · files touched · decisions made · next step. This is your state *outside* the context window — it survives compaction.
+  - **When you write the checkpoint, restate the session's anchor formats too.** In particular: questions reducible to ≤4 options go through `AskUserQuestion` (click-question), never inline text. The checkpoint is re-read after compaction, so restating the format there is what keeps it from decaying late in a long session (cf. daquele-jeito §1.1).
 - Redirect verbose command output to files; do not dump long logs into the conversation just to read them.
 - The real gauge is the human's status line (context %). If asked to `/compact`, write the checkpoint first, then comply.
 
