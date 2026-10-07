@@ -22,7 +22,7 @@ Letting an agent run unattended fails in four well-documented ways. Plain prompt
 | Widening a failed search to the whole machine (`find /`) | cross-check #3 | **`block-broad-scan.py`** hard-blocks it |
 | Irreversible delete (`rm -rf ~`) | cross-check #2 | **`block-broad-scan.py`** hard-blocks it |
 | Doom loop (same error, retried forever) | cross-check #4 | **`error-circuit-breaker.sh`** trips after N |
-| Context fills up and quality silently rots | context discipline | **`precompact-checkpoint.sh`** + **statusline %** |
+| Context fills up and quality silently rots | context discipline + cross-check #6 | **`context-gauge.py`** + **`compact-reanchor.py`** + **statusline %** |
 
 ## What the skill does (the cross-checks)
 
@@ -33,6 +33,7 @@ Once a plan is approved and you "release" execution, Claude keeps going **withou
 3. **Path not found → do not widen scope** — never escalate a missing path to a whole-machine `find /`.
 4. **Repeated error** — same class of error 3× on one sub-task → stop, don't keep trying variants.
 5. **Genuine fork** — 2+ reasonable approaches where picking wrong costs rework.
+6. **Context threshold**: the context gauge hook opens the handoff window at 50% and calls the ceiling at 80%, or the session was compacted. Pick the cut point from what comes next, finish the step, refresh `SESSION.md`, and open a fresh session (a session chip where a tool spawns one, otherwise a resume prompt to paste).
 
 Vague self-states ("if unsure") decay over a long session; these are written as **checkable conditions** on purpose.
 
@@ -47,7 +48,7 @@ Use them together: plan *daquele jeito*, then put the *doors to automatic*.
 
 ## The harness layer (hooks)
 
-The enforcement layer splits in two. The **scan/destruction blocker runs globally** (always on, in `~/.claude/settings.json`); the **mode-behavior hooks** (circuit breaker, precompact) are **bundled in `SKILL.md`'s frontmatter** (active only while the skill is engaged). `install.sh` wires the global pieces (blocker + status line). Scripts live in [`hooks/`](hooks/):
+The enforcement layer splits in two. The **scan/destruction blocker and the context hooks run globally** (always on, in `~/.claude/settings.json`); the **mode-behavior hooks** (circuit breaker, precompact) are **bundled in `SKILL.md`'s frontmatter** (active only while the skill is engaged). `install.sh` wires the global pieces (blocker, status line, context gauge, re-anchor). Scripts live in [`hooks/`](hooks/):
 
 | Hook | Event | What it does |
 |---|---|---|
@@ -55,8 +56,10 @@ The enforcement layer splits in two. The **scan/destruction blocker runs globall
 | `error-circuit-breaker.sh` | `PostToolUse` + `PostToolUseFailure` (Bash) · **skill** | Uses the dedicated failure event to count consecutive failures per session; trips after `PORTAS_ERROR_THRESHOLD` (default 4). `PORTAS_DEBUG=1` logs raw payloads to confirm the schema on your version. |
 | `precompact-checkpoint.sh` | `PreCompact` · **skill** | Snapshots the transcript right before automatic compaction (does **not** block it). |
 | `statusline-context.sh` | `statusLine` (settings.json) · **global** | Surfaces the live context % (⚠️ at ≥80%) — the real gauge for context discipline. Added by `install.sh`. |
+| `context-gauge.py` | `UserPromptSubmit` + `PostToolUse` · **global** | Reads the context size of the last main-thread call from the transcript and injects one line in three bands: a delegate reminder from `PORTAS_DELEGATE_PCT` (30), the handoff window from `PORTAS_HANDOFF_INFO_PCT` (50) and the ceiling at `PORTAS_HANDOFF_PCT` (80). On tool calls it speaks once per band from 50% up, so long runs with no user prompt still hear it. Window from `PORTAS_CONTEXT_WINDOW` (default 1000000). Silent inside subagents. Fails **open**. |
+| `compact-reanchor.py` | `SessionStart` (`compact`) · **global** | After a compaction, puts the state back into context: transcript path, `SESSION.md` inlined (capped), files to re-read, and the order to hand off now. Fails **open**. |
 
-The block list is **defense-in-depth against common, high-cost mistakes**, not a security boundary against a determined adversary. The hard safety boundary is still a sandbox. The block logic is covered by [`tests/test_block_broad_scan.py`](tests/test_block_broad_scan.py) (36 cases: dangerous patterns blocked, look-alikes like `git commit -m "fix rm -rf / bug"` allowed).
+The block list is **defense-in-depth against common, high-cost mistakes**, not a security boundary against a determined adversary. The hard safety boundary is still a sandbox. The block logic is covered by [`tests/test_block_broad_scan.py`](tests/test_block_broad_scan.py) (36 cases: dangerous patterns blocked, look-alikes like `git commit -m "fix rm -rf / bug"` allowed). The context hooks are covered by [`tests/test_context_gauge.py`](tests/test_context_gauge.py) (35 cases: bands, once-per-band on tool calls, subagent silence, compaction boundary, tunables, fail-open).
 
 ## Installation
 
@@ -74,12 +77,13 @@ Update later with `cd ~/.claude/skills/portas-em-automatico && git pull`.
 ~/.claude/skills/portas-em-automatico/install.sh
 ```
 
-`install.sh` wires the always-on pieces into `~/.claude/settings.json` — the **scan/destruction blocker** (PreToolUse) and the **context-% status line** — idempotently (backs up first, never clobbers). The **mode-behavior hooks** (circuit breaker, precompact) load automatically from the skill's frontmatter when you engage the skill. Requires `python3` and `jq` on `PATH`.
+`install.sh` wires the always-on pieces into `~/.claude/settings.json` — the **scan/destruction blocker** (PreToolUse), the **context-% status line**, the **context gauge** (UserPromptSubmit + PostToolUse) and the **post-compaction re-anchor** (SessionStart/compact) — idempotently (backs up first, never clobbers). The **mode-behavior hooks** (circuit breaker, precompact) load automatically from the skill's frontmatter when you engage the skill. Requires `python3` and `jq` on `PATH`.
 
 ### 3. Verify
 
 ```bash
 python3 ~/.claude/skills/portas-em-automatico/tests/test_block_broad_scan.py   # expect pass=36 fail=0
+python3 ~/.claude/skills/portas-em-automatico/tests/test_context_gauge.py      # expect pass=35 fail=0
 echo '{"tool_input":{"command":"find / -name x"}}' | python3 ~/.claude/skills/portas-em-automatico/hooks/block-broad-scan.py; echo "exit=$? (expect 2)"
 ```
 
@@ -99,7 +103,7 @@ It announces itself on first activation with *"Doors to automatic and cross-chec
 rm -rf ~/.claude/skills/portas-em-automatico
 ```
 
-Then remove the `statusLine` entry from `~/.claude/settings.json` (or restore the `~/.claude/settings.json.bak-portas` backup that `install.sh` wrote). The guardrail hooks need no cleanup — they lived in the skill folder you just deleted.
+Then remove the `statusLine` entry and the hooks that point into the skill folder from `~/.claude/settings.json` (or restore the `~/.claude/settings.json.bak-portas` backup that `install.sh` wrote). The skill-scoped hooks (circuit breaker, precompact) need no cleanup — they lived in the skill folder you just deleted. The global context hooks fail open if their script is gone, but leaving them registered is clutter.
 
 ## Author & License
 
