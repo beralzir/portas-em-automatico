@@ -7,9 +7,8 @@
 #     (PreToolUse), the context-% status line, the context gauge (UserPromptSubmit +
 #     PostToolUse) and the post-compaction re-anchor (SessionStart/compact). Added
 #     here, idempotently.
-#   - SKILL-SCOPED (in SKILL.md frontmatter): the error circuit breaker and the
-#     precompact checkpoint — they load automatically when the skill is engaged and
-#     need NO settings.json changes.
+#   - SKILL-SCOPED (in SKILL.md frontmatter): the error circuit breaker — it loads
+#     automatically when the skill is engaged and needs NO settings.json changes.
 #
 # Safe to re-run. Backs up settings.json before touching it; never clobbers existing keys.
 set -euo pipefail
@@ -84,9 +83,15 @@ else
   echo "     context-gauge self-test: FAILED — run it directly to see details:"
   echo "       python3 ${SKILL_DIR}/tests/test_context_gauge.py"
 fi
+if python3 "${SKILL_DIR}/tests/test_frontmatter_paths.py" >/dev/null 2>&1; then
+  echo "     frontmatter-paths self-test: PASS"
+else
+  echo "     frontmatter-paths self-test: FAILED — run it directly to see details:"
+  echo "       python3 ${SKILL_DIR}/tests/test_frontmatter_paths.py"
+fi
 
 echo
 echo "Done."
 echo "  - Global (settings.json): scan blocker, context-% status line, context gauge, post-compaction re-anchor."
-echo "  - Skill-scoped (frontmatter): circuit breaker + precompact — load on /portas-em-automatico."
+echo "  - Skill-scoped (frontmatter): circuit breaker — loads on /portas-em-automatico."
 echo "Restart your Claude Code session so settings.json takes effect."

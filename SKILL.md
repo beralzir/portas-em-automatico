@@ -7,20 +7,21 @@ description: |
 
   DO NOT TRIGGER when: the phrase is negated ("não põe em automático"), past tense, a meta-question ("o que é doors to automatic?"), or when "cross-check" means a literal data-reconciliation task ("faça o cross-check dessas duas planilhas"). When in doubt, prefer the slash command.
 hooks:
+  # Skill hooks run in the session's working directory, so a relative path fails.
+  # Claude Code hands skill hooks this folder as ${CLAUDE_PLUGIN_ROOT}
+  # (${CLAUDE_SKILL_DIR} only expands in the body and in allowed-tools).
   PostToolUse:
     - matcher: Bash
       hooks:
         - type: command
-          command: "./hooks/error-circuit-breaker.sh"
+          command: bash
+          args: ["${CLAUDE_PLUGIN_ROOT}/hooks/error-circuit-breaker.sh"]
   PostToolUseFailure:
     - matcher: Bash
       hooks:
         - type: command
-          command: "./hooks/error-circuit-breaker.sh"
-  PreCompact:
-    - hooks:
-        - type: command
-          command: "./hooks/precompact-checkpoint.sh"
+          command: bash
+          args: ["${CLAUDE_PLUGIN_ROOT}/hooks/error-circuit-breaker.sh"]
 ---
 
 # Portas em automático — supervised autonomous execution
@@ -79,11 +80,10 @@ You do **not** have a trustworthy gauge of how full the context window is, and t
 
 ## Instruction vs enforcement (read this)
 
-Everything above is **instruction** — you will try to honor it, but instruction is not a hard guarantee, especially under a full context or mid-loop. The **enforcement** layer splits in two: the scan/destruction blocker and the two context hooks run **globally** (always on, in `~/.claude/settings.json` — added by `install.sh`), and the mode-behavior hooks are **bundled in this skill's frontmatter** (active only while the skill is engaged). Both are backed by the scripts in `hooks/`:
+Everything above is **instruction** — you will try to honor it, but instruction is not a hard guarantee, especially under a full context or mid-loop. The **enforcement** layer splits in two: the scan/destruction blocker and the two context hooks run **globally** (always on, in `~/.claude/settings.json` — added by `install.sh`), and the mode-behavior hook (the circuit breaker) is **bundled in this skill's frontmatter** (registered when the skill is invoked and kept for the rest of the session). Both are backed by the scripts in `hooks/`:
 
 - `block-broad-scan.py` (PreToolUse / Bash, **global / always-on**) — hard-blocks `find /`, `find ~`, broad recursive greps, and `rm -rf` on dangerous targets. Runs *before* the permission mode, so it holds even under acceptEdits / bypass. Enforces cross-check #3 (and the destructive half of #2).
 - `error-circuit-breaker.sh` (PostToolUse + **PostToolUseFailure** / Bash) — uses the dedicated failure event to count consecutive failures per session and trips after a threshold (default 4). Backstop for cross-check #4 — the instruction tells you to stop at 3×, so this hook (one higher) fires only if you blew past that self-check.
-- `precompact-checkpoint.sh` (PreCompact) — snapshots the transcript right before automatic compaction. Backstop for context discipline.
 - `context-gauge.py` (UserPromptSubmit + PostToolUse, **global / always-on**): reads the context size of the last main-thread call from the transcript and injects one line in three bands: delegate reminder from `PORTAS_DELEGATE_PCT` (30), handoff window from `PORTAS_HANDOFF_INFO_PCT` (50), ceiling at `PORTAS_HANDOFF_PCT` (80). On tool calls it speaks once per band from 50% up, so long runs with no user prompt still get it. Silent inside subagents. Enforces cross-check #6.
 - `compact-reanchor.py` (SessionStart / `compact`, **global / always-on**): runs after a compaction and puts the state back: transcript path, `SESSION.md` inlined, files to re-read, and the order to hand off now.
 - `statusline-context.sh` — surfaces the live context % to the human (the real gauge for #context discipline).
