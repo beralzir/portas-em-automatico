@@ -66,6 +66,8 @@ Stop and bring the human back in when ANY of these is true. **Default to `AskUse
 
 Also pause if a **kludge/shortcut appears mid-execution** that would add silent technical debt: surface the clean-vs-hack tradeoff and let the human choose (redo clean now, or accept it with an explicit `TODO`), instead of burying it in a diff (cf. daquele-jeito §5).
 
+**Not a pause: an access the plan didn't approve.** A browser site the approved plan didn't list (cf. the access budget, daquele-jeito §1.2), or any access that was denied or blocked, is no reason to stop or to wait on a prompt the human may not see: skip it, mark it "not consulted" with the reason, list it in the next report, and keep going. If that leaves a step's done criterion unmet, report the step as partial, not done. Never route around a denial through another tool, host or agent, and never edit permission settings to unblock the run.
+
 ## Context discipline (be honest: you cannot reliably measure context)
 
 You do **not** have a trustworthy gauge of how full the context window is, and these very instructions may be among the first things dropped when it compacts. So do not rely on "I'll notice it filling up". When the global hooks are installed, the gauge comes from the harness: `context-gauge.py` injects a `[context-gauge]` line from 30% of the window (a reminder to delegate), opens the handoff window at 50% and calls the ceiling at 80%, and those lines are cross-check #6.

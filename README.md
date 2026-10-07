@@ -35,6 +35,8 @@ Once a plan is approved and you "release" execution, Claude keeps going **withou
 5. **Genuine fork** — 2+ reasonable approaches where picking wrong costs rework.
 6. **Context threshold**: the context gauge hook opens the handoff window at 50% and calls the ceiling at 80%, or the session was compacted. Pick the cut point from what comes next, finish the step, refresh `SESSION.md`, and open a fresh session (a session chip where a tool spawns one, otherwise a resume prompt to paste).
 
+Not a pause: a browser site the approved plan didn't list, or an access that was denied, is skipped and reported as "not consulted", never waited on or routed around, and permission settings are never edited to unblock the run.
+
 Vague self-states ("if unsure") decay over a long session; these are written as **checkable conditions** on purpose.
 
 ## Relationship to daquele-jeito
